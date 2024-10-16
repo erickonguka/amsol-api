@@ -118,7 +118,7 @@ app.post("/api/login", async (req, res) => {
       sameSite: "lax",
       secure: false, // Set true in production with HTTPS
     });
-    res.json({ message: "Login successful!", token });
+    res.json({ message: "Login successful!", token, role: user.role });
   } catch (error) {
     console.error("Login error:", error);
     res.status(500).json({ message: "Server error" });
