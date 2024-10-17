@@ -5,7 +5,7 @@ const applicationSchema = new mongoose.Schema(
     applicant: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "User",
-      required: true,
+      
     },
     job: {
       type: mongoose.Schema.Types.ObjectId,
@@ -32,13 +32,8 @@ const applicationSchema = new mongoose.Schema(
     whatsAppNo: { type: String },  // Fixed typo
     phoneNumber: { 
       type: String, 
-      required: true, 
-      validate: {
-        validator: function (v) {
-          return /^[0-9]{10,15}$/.test(v);  // Example: 10-15 digits
-        },
-        message: (props) => `${props.value} is not a valid phone number!`,
-      },
+      required: true
+      
     },
     email: { type: String, required: true },
     age: { type: Number, required: true },

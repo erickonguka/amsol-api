@@ -10,6 +10,7 @@ const Job = require("./models/Job");
 const Category = require("./models/Category");
 const multer = require("multer");
 const pdfParse = require("pdf-parse");
+const xlsx = require('xlsx');
 const mammoth = require("mammoth");
 const extractProfileDetails = require("./middleware/cvExtract");
 const Application = require("./models/Application");
@@ -21,18 +22,37 @@ const app = express();
 app.use(express.json());
 app.use(cookieParser());
 
-// Multer for storage to the memory - for documents
-const storage = multer.memoryStorage();
-const upload = multer({ storage: storage });
+//Multer for storage to the memory - for documents
+// const storage = multer.memoryStorage();
+// const upload = multer({ storage: storage });
+const path = require("path");
+const fs = require("fs");
+const uploadDir = path.join(__dirname, "uploads");
+if (!fs.existsSync(uploadDir)) {
+  fs.mkdirSync(uploadDir, { recursive: true });
+}
+
+// Multer configuration for file uploads (CV)
+const storage = multer.diskStorage({
+  destination: (req, file, cb) => {
+    cb(null, uploadDir);
+  },
+  filename: (req, file, cb) => {
+    cb(null, Date.now() + path.extname(file.originalname)); // Append timestamp to avoid duplicate names
+  }
+});
+
+const upload = multer({ storage });
+
 
 const allowedOrigins = ["http://localhost:5174", "http://localhost:5173"];
 
 const corsOptions = {
   origin: (origin, callback) => {
     if (allowedOrigins.includes(origin) || !origin) {
-      callback(null, true); // Allow request
+      callback(null, true); 
     } else {
-      callback(new Error("Not allowed by CORS")); // Block request
+      callback(new Error("Not allowed by CORS")); 
     }
   },
   credentials: true,
@@ -56,6 +76,66 @@ mongoose
   .then(() => console.log("Connected to MongoDB"))
   .catch((err) => console.error("MongoDB connection error:", err));
 
+  //upload excel
+  // Endpoint to upload Excel file
+  app.post('/upload-excel', upload.single('file'), async (req, res) => {
+    if (!req.file) {
+        return res.status(400).send('No file uploaded.');
+    }
+
+    try {
+        // Read the uploaded Excel file
+        const workbook = xlsx.readFile(req.file.path);
+        const sheetName = workbook.SheetNames[0]; // Assume first sheet contains data
+        const sheet = workbook.Sheets[sheetName];
+
+        // Convert sheet data to JSON
+        const data = xlsx.utils.sheet_to_json(sheet);
+
+        // Iterate over each row in the Excel data
+        for (const row of data) {
+            // Safely parse phone number and work experience
+            const phoneNumber = row.phoneNumber ? String(row.phoneNumber) : '';
+            const whatsAppNo = row.whatsAppNo ? String(row.whatsAppNo) : '';
+
+            // Handle nested workExperience data
+            const workExperience = row.workExperience
+                ? [{
+                    company: row.workExperience.company || '',
+                    position: row.workExperience.position || '',
+                    duration: row.workExperience.duration || '',
+                }]
+                : [];
+
+            // Create a new application entry
+            const newApplication = new Application({
+                firstName: row.firstName || '',
+                secondName: row.secondName || '',
+                lastName: row.lastName || '',
+                idNumber: row.idNumber || '',
+                whatsAppNo,
+                phoneNumber,
+                email: row.email || '',
+                age: row.age || '',
+                nationality: row.nationality || '',
+                location: row.location || '',
+                specialization: row.specialization || '',
+                academicLevel: row.academicLevel || '',
+                workExperience,
+                salaryInfo: row.salaryInfo || '',
+                cv: row.cv || '',
+            });
+
+            // Save the application to the database
+            await newApplication.save();
+        }
+
+        res.send('Applications uploaded successfully.');
+    } catch (error) {
+        console.error('Error uploading applications:', error);
+        res.status(500).send('Error uploading applications.');
+    }
+});
 // Register endpoint
 app.post(
   "/api/register",
@@ -487,131 +567,135 @@ app.delete(
   }
 );
 
-// Apply for a job
+// File upload route
 app.post(
-  "/api/applications",
-  auth,
-  upload.single("cv"), // If the CV is a file, use this
-  [
-    body("firstName").notEmpty().withMessage("First name is required"),
-    body("email").isEmail().withMessage("Valid email is required"),
-    body("idNumber").isNumeric().withMessage("ID Number must be numeric"),
-    body("phoneNumber").isMobilePhone().withMessage("Invalid phone number"),
-  ],
-  async (req, res) => {
-    const errors = validationResult(req);
-    if (!errors.isEmpty()) {
-      return res.status(400).json({ errors: errors.array() });
-    }
-
-    try {
-      const applicantId = req.user?.id;
-      if (!applicantId) {
-        return res.status(401).json({ message: "Unauthorized" });
+    "/api/applications",
+    auth, // Authentication middleware
+    upload.single("cv"), // Use this for single file uploads
+    [
+      body("firstName").notEmpty().withMessage("First name is required"),
+      body("email").isEmail().withMessage("Valid email is required"),
+      body("idNumber").isNumeric().withMessage("ID Number must be numeric"),
+      body("phoneNumber").isMobilePhone().withMessage("Invalid phone number"),
+    ],
+    async (req, res) => {
+      const errors = validationResult(req);
+      if (!errors.isEmpty()) {
+        return res.status(400).json({ errors: errors.array() });
       }
-
-      const {
-        jobId,
-        firstName,
-        secondName,
-        lastName,
-        idNumber,
-        whatsAppNo,
-        phoneNumber,
-        email,
-        age,
-        nationality,
-        location,
-        specialization,
-        academicLevel,
-        company1,
-        position1,
-        duration1,
-        company2,
-        position2,
-        duration2,
-        company3,
-        position3,
-        duration3,
-        salaryInfo,
-      } = req.body;
-
-      // Construct the work experience array
-      const workExperience = [
-        { company: company1, position: position1, duration: duration1 },
-        { company: company2, position: position2, duration: duration2 },
-        { company: company3, position: position3, duration: duration3 },
-      ];
-
-      const cv = req.file ? req.file.path : req.body.cv; // Handle CV upload
-
-      const application = new Application({
-        applicant: applicantId,
-        job: jobId,
-        firstName,
-        secondName,
-        lastName,
-        idNumber,
-        whatsAppNo,
-        phoneNumber,
-        email,
-        age,
-        nationality,
-        location,
-        specialization,
-        academicLevel,
-        workExperience,
-        salaryInfo,
-        cv,
-      });
-
-      await application.save();
-      res.status(201).json({
-        message: "Application submitted successfully",
-        application,
-      });
-    } catch (error) {
-      console.error("Application error:", error);
-      res.status(500).json({ message: "Server error" });
+  
+      try {
+        const applicantId = req.user?.id; // Get applicant ID from auth middleware
+        if (!applicantId) {
+          return res.status(401).json({ message: "Unauthorized" });
+        }
+  
+        const {
+          jobId,
+          firstName,
+          secondName,
+          lastName,
+          idNumber,
+          whatsAppNo,
+          phoneNumber,
+          email,
+          age,
+          nationality,
+          location,
+          specialization,
+          academicLevel,
+          company1,
+          position1,
+          duration1,
+          company2,
+          position2,
+          duration2,
+          company3,
+          position3,
+          duration3,
+          salaryInfo,
+        } = req.body;
+  
+        // Construct the work experience array
+        const workExperience = [
+          { company: company1, position: position1, duration: duration1 },
+          { company: company2, position: position2, duration: duration2 },
+          { company: company3, position: position3, duration: duration3 },
+        ];
+  
+        const cv = req.file ? req.file.path : null; // Handle CV upload path
+  
+        // Assuming you have an Application model to save to MongoDB
+        const application = new Application({
+          applicant: applicantId,
+          job: jobId,
+          firstName,
+          secondName,
+          lastName,
+          idNumber,
+          whatsAppNo,
+          phoneNumber,
+          email,
+          age,
+          nationality,
+          location,
+          specialization,
+          academicLevel,
+          workExperience,
+          salaryInfo,
+          cv,
+        });
+  
+        await application.save();
+        res.status(201).json({
+          message: "Application submitted successfully",
+          application,
+        });
+      } catch (error) {
+        console.error("Application error:", error);
+        res.status(500).json({ message: "Server error" });
+      }
     }
-  }
-);
+  );
 
 // Get applications (applicant-specific or all for admin)
-app.get("/api/applications", auth, async (req, res) => {
-  try {
-    if (req.user.role === "admin" || req.user.role === "super admin") {
+app.get("/api/applications", async (req, res) => {
+    try {
+      // Fetch all applications and populate applicant and job information
       const applications = await Application.find()
-        .populate("applicant", "-password")
-        .populate("job");
+        .populate("applicant", "-password") // Exclude password field from applicant
+        .populate("job"); // Populate job details
+  
+      // Return the applications data
       return res.json(applications);
-    } else {
-      const applications = await Application.find({
-        applicant: req.user.id,
-      }).populate("job");
-      return res.json(applications);
+    } catch (error) {
+      console.error("Error fetching applications:", error);
+      res.status(500).json({ message: "Server error" });
     }
-  } catch (error) {
-    console.error("Error fetching applications:", error);
-    res.status(500).json({ message: "Server error" });
-  }
-});
+  });
+  
 
 // Get application by ID
-app.get("/api/applications/:id", auth, async (req, res) => {
-  try {
-    const application = await Application.findById(req.params.id)
-      .populate("applicant", "-password")
-      .populate("job");
-    if (!application) {
-      return res.status(404).json({ message: "Application not found" });
+app.get("/api/applications", auth, async (req, res) => {
+    try {
+      console.log("User Info:", req.user); // Verify user details
+  
+      if (req.user.role === "admin" || req.user.role === "super admin") {
+        const applications = await Application.find()
+          .populate("applicant", "-password")
+          .populate("job");
+        return res.json(applications);
+      } else {
+        const applications = await Application.find({
+          applicant: req.user.id,
+        }).populate("job");
+        return res.json(applications);
+      }
+    } catch (error) {
+      console.error("Error fetching applications:", error);
+      res.status(500).json({ message: "Server error" });
     }
-  } catch (error) {
-    console.error("Error fetching application by ID:", error);
-    res.status(500).json({ message: "Server error" });
-  }
-});
-
+  });
 // Update application status
 app.put(
   "/api/applications/:id/status",
