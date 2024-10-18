@@ -76,7 +76,6 @@ mongoose
   .then(() => console.log("Connected to MongoDB"))
   .catch((err) => console.error("MongoDB connection error:", err));
 
-  //upload excel
   // Endpoint to upload Excel file
   app.post('/upload-excel', upload.single('file'), async (req, res) => {
     if (!req.file) {
@@ -136,6 +135,15 @@ mongoose
         res.status(500).send('Error uploading applications.');
     }
 });
+
+app.get("/api/check-session", (req, res) => {
+    if (req.session && req.session.user) {
+      res.json({ loggedIn: true });
+    } else {
+      res.json({ loggedIn: false });
+    }
+  });
+  
 // Register endpoint
 app.post(
   "/api/register",
