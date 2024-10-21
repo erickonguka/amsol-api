@@ -1,0 +1,30 @@
+const express = require("express");
+const multer = require("multer");
+const User = require("../models/User");
+const router = express.Router();
+
+// Configure Multer for file storage
+const storage = multer.diskStorage({
+  destination: (req, file, cb) => cb(null, "uploads/"),
+  filename: (req, file, cb) => cb(null, `${Date.now()}-${file.originalname}`),
+});
+const upload = multer({ storage });
+
+// Fetch user profile
+router.get("/profile", async (req, res) => {
+  try {
+    const user = await User.findById(req.user._id);
+    if (!user) return res.status(404).json({ message: "User not found" });
+    res.json(user);
+  } catch (error) {
+    res.status(500).json({ message: "Error fetching profile" });
+  }
+});
+
+// Upload profile picture and CV
+router.post(
+  "/profile/upload",
+  upload.fields([{ name: "profilePicture" }, { name: "cv" }]),
+  async (req, res) => {
+    try {
+      const user = await User.findById(req.user._id

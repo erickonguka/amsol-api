@@ -62,7 +62,7 @@ const applicationSchema = new mongoose.Schema(
     salaryInfo: { type: String },
     cv: { type: String }
   },
-  { timestamps: true }  // Automatically adds createdAt and updatedAt
+  { timestamps: true }  
 );
 
 const Application = mongoose.model("Application", applicationSchema);

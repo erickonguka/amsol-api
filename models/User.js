@@ -2,23 +2,14 @@ const mongoose = require("mongoose");
 
 const userSchema = new mongoose.Schema(
   {
-    username: {
-      type: String,
-      required: true,
-      unique: true,
-    },
-    email: {
-      type: String,
-      required: true,
-      unique: true,
-    },
-    password: {
-      type: String,
-      required: true,
-    },
+    username: { type: String, required: true, unique: true },
+    email: { type: String, required: true, unique: true },
+    password: { type: String, required: true },
     profile: {
-      type: Object,
-      default: {},
+      bio: { type: String, default: "" },
+      address: { type: String, default: "" },
+      profilePicture: { type: String }, // Store path to profile picture
+      resume: { type: String }, // Store path to uploaded resume/CV
     },
     role: {
       type: String,
@@ -31,9 +22,8 @@ const userSchema = new mongoose.Schema(
       default: "active",
     },
   },
-  { timestamps: true }  // Adds createdAt and updatedAt automatically
+  { timestamps: true }
 );
 
 const User = mongoose.model("User", userSchema);
-
 module.exports = User;
