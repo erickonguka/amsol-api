@@ -43,7 +43,16 @@ const storage = multer.diskStorage({
 
 const upload = multer({ storage });
 
+<<<<<<< HEAD
 const allowedOrigins = ["http://localhost:5174", "http://localhost:5173", "https://c66b-102-212-236-178.ngrok-free.app"];
+=======
+const allowedOrigins = [
+  "http://localhost:5174",
+  "http://localhost:5173",
+  "https://amsol-api.onrender.com",
+  "https://amsoljobs.africa",
+];
+>>>>>>> 806082f75122fa198cb0cda4a6dbb2e2aab1ef84
 
 const corsOptions = {
   origin: (origin, callback) => {
