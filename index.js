@@ -43,16 +43,7 @@ const storage = multer.diskStorage({
 
 const upload = multer({ storage });
 
-<<<<<<< HEAD
 const allowedOrigins = ["http://localhost:5174", "http://localhost:5173", "https://c66b-102-212-236-178.ngrok-free.app"];
-=======
-const allowedOrigins = [
-  "http://localhost:5174",
-  "http://localhost:5173",
-  "https://amsol-api.onrender.com",
-  "https://amsoljobs.africa",
-];
->>>>>>> 806082f75122fa198cb0cda4a6dbb2e2aab1ef84
 
 const corsOptions = {
   origin: (origin, callback) => {
@@ -174,7 +165,6 @@ app.put("/api/profile/picture/:userId", upload.single("file"), async (req, res) 
   }
 });
 
-// Register endpoint
 app.post(
   "/api/register",
   [
@@ -199,22 +189,37 @@ app.post(
       if (existingUser) {
         return res.status(400).json({ message: "User already exists" });
       }
+
       const hashedPassword = await bcrypt.hash(password, 10);
+
+      // Create the user object
       const user = new User({
         username,
         email,
         password: hashedPassword,
         role,
       });
+
+      // Save the user
       await user.save();
 
-      res.status(201).json({ message: "User registered successfully" });
+      // Optionally, generate JWT token here
+      const token = jwt.sign({ id: user._id }, process.env.JWT_SECRET, {
+        expiresIn: '1h',
+      });
+
+      res.status(201).json({
+        message: "User registered successfully",
+        id: user._id,
+        token: token,  // Return the JWT token
+      });
     } catch (error) {
       console.error("Registration error:", error);
       res.status(500).json({ message: "Server error" });
     }
   }
 );
+
 
 // Login
 app.post("/api/login", async (req, res) => {
