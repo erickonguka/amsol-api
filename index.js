@@ -1,9 +1,9 @@
-require("dotenv").config();
+require('dotenv').config();
 const express = require("express");
 const mongoose = require("mongoose");
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
-const { auth, checkRole } = require("./middleware/auth");
+const { auth } = require("./middleware/auth");
 const { sendEmail } = require("./middleware/mailer");
 const User = require("./models/User");
 const Job = require("./models/Job");
@@ -23,14 +23,13 @@ app.use(express.json());
 app.use(cookieParser());
 
 //Multer for storage to the memory - for documents
-// const storage = multer.memoryStorage();
-// const upload = multer({ storage: storage });
 const path = require("path");
 const fs = require("fs");
 const uploadDir = path.join(__dirname, "uploads");
 if (!fs.existsSync(uploadDir)) {
   fs.mkdirSync(uploadDir, { recursive: true });
 }
+
 
 // Multer configuration for file uploads (CV)
 const storage = multer.diskStorage({
@@ -44,7 +43,7 @@ const storage = multer.diskStorage({
 
 const upload = multer({ storage });
 
-const allowedOrigins = ["http://localhost:5174", "http://localhost:5173"];
+const allowedOrigins = ["http://localhost:5174", "http://localhost:5173", "https://c66b-102-212-236-178.ngrok-free.app"];
 
 const corsOptions = {
   origin: (origin, callback) => {
@@ -62,7 +61,7 @@ const corsOptions = {
 app.use(cors(corsOptions));
 
 // Database Instance
-require("dotenv").config(); // Make sure dotenv is loaded
+require("dotenv").config();
 
 const mongoURI = process.env.MONGODB_URI;
 if (!mongoURI) {
@@ -99,12 +98,12 @@ app.post("/upload-excel", upload.single("file"), async (req, res) => {
       // Handle nested workExperience data
       const workExperience = row.workExperience
         ? [
-            {
-              company: row.workExperience.company || "",
-              position: row.workExperience.position || "",
-              duration: row.workExperience.duration || "",
-            },
-          ]
+          {
+            company: row.workExperience.company || "",
+            position: row.workExperience.position || "",
+            duration: row.workExperience.duration || "",
+          },
+        ]
         : [];
 
       // Create a new application entry
@@ -142,6 +141,27 @@ app.get("/api/check-session", (req, res) => {
     res.json({ loggedIn: true });
   } else {
     res.json({ loggedIn: false });
+  }
+});
+
+app.put("/api/profile/picture/:userId", upload.single("file"), async (req, res) => {
+  try {
+    const filePath = req.file.path;
+
+    const updatedUser = await User.findByIdAndUpdate(
+      req.params.userId,
+      { profilePicture: filePath }, // Assuming you have a field for profile picture in your User model
+      { new: true }
+    );
+
+    if (!updatedUser) {
+      return res.status(404).json({ message: "User not found" });
+    }
+
+    res.json({ message: "Profile picture uploaded successfully", user: updatedUser });
+  } catch (error) {
+    console.error("Error uploading profile picture:", error);
+    res.status(500).json({ message: "Server error" });
   }
 });
 
@@ -199,23 +219,28 @@ app.post("/api/login", async (req, res) => {
     if (!isMatch) {
       return res.status(400).json({ message: "Invalid credentials" });
     }
-    const token = jwt.sign({ id: user._id }, process.env.JWT_SECRET, {
-      expiresIn: "1h",
+    const token = jwt.sign({ id: user._id, role: user.role }, process.env.JWT_SECRET, {
+      expiresIn: "2h",
     });
     res.cookie("token", token, {
       httpOnly: true,
       sameSite: "lax",
       secure: false, // Set true in production with HTTPS
     });
-    res.json({ message: "Login successful!", token, role: user.role });
+    res.json({ message: "Login successful!", id: user._id, token, role: user.role });
   } catch (error) {
     console.error("Login error:", error);
     res.status(500).json({ message: "Server error" });
   }
 });
 
+app.post('/logout', async (req, res) => {
+  res.clearCookie('token');
+  res.json({ message: 'Logged out successfully' });
+});
+
 // Read user by ID endpoint
-app.get("/api/users/:id", auth, async (req, res) => {
+app.get("/api/users/:id", async (req, res) => {
   try {
     const user = await User.findById(req.params.id).select("-password");
     if (!user) {
@@ -231,8 +256,7 @@ app.get("/api/users/:id", auth, async (req, res) => {
 // Delete user by ID
 app.delete(
   "/api/users/:id",
-  auth,
-  checkRole(["admin", "super admin"]),
+
   async (req, res) => {
     try {
       const user = await User.findById(req.params.id);
@@ -251,8 +275,6 @@ app.delete(
 // Get all users with pagination GET /api/users?page=1&limit=10
 app.get(
   "/api/users",
-  auth,
-  checkRole(["admin", "super admin"]),
   async (req, res) => {
     const { page = 1, limit = 10 } = req.query;
     const pageNumber = parseInt(page, 10);
@@ -276,53 +298,90 @@ app.get(
   }
 );
 
+// Update user profile details
+app.put("/api/profile/:userId", async (req, res) => {
+  try {
+    const { first_name, last_name, phone, address, email, bio } = req.body.profile;
+
+    // Validate required fields
+    if (!phone || !bio) {
+      return res.status(400).json({ message: "Phone and bio are required." });
+    }
+
+    const updatedUser = await User.findByIdAndUpdate(
+      req.params.userId,
+      {
+        "profile.first_name": first_name,
+        "profile.last_name": last_name,
+        "profile.phone": phone,
+        "profile.address": address,
+        "profile.email": email,
+        "profile.bio": bio,
+      },
+      { new: true }
+    );
+
+    if (!updatedUser) {
+      return res.status(404).json({ message: "User not found" });
+    }
+
+    res.json({ message: "Profile updated successfully", user: updatedUser });
+  } catch (error) {
+    console.error("Error updating user profile:", error);
+    res.status(500).json({ message: "Server error" });
+  }
+});
+
 // Update user profile endpoint (supports DOCX, PDF, and JSON)
 app.put(
-  "/api/profile/:id",
-  auth,
-  checkRole(["admin", "super admin", "job applicant"]),
-  upload.single("file"),
+  "/api/profile/resume/:id", upload.single("file"),  // Adjust to use the multer configuration defined earlier
   async (req, res) => {
     try {
       const userId = req.params.id;
       const file = req.file;
       let extractedText;
       let profileDetails;
+
       if (file) {
+        // Handle PDF file
         if (file.mimetype === "application/pdf") {
-          const dataBuffer = file.buffer;
-          const data = await pdfParse(dataBuffer);
+          const filePath = file.path;
+          const data = await pdfParse(fs.readFileSync(filePath));
           extractedText = data.text;
         }
-        if (
-          file.mimetype ===
-          "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-        ) {
-          const result = await mammoth.extractRawText({ buffer: file.buffer });
+
+        // Handle DOCX files
+        if (file.mimetype === "application/vnd.openxmlformats-officedocument.wordprocessingml.document") {
+          const filePath = file.path;
+          const result = await mammoth.extractRawText({ path: filePath });
           extractedText = result.value;
         }
+
         if (!extractedText) {
           return res.status(400).json({ message: "Unsupported file type" });
         }
+
+        // Now process extracted text (e.g., profile details extraction)
         profileDetails = extractProfileDetails(extractedText);
       } else {
         if (req.body && Object.keys(req.body).length > 0) {
           profileDetails = req.body;
         } else {
-          return res
-            .status(400)
-            .json({ message: "No file or profile data provided" });
+          return res.status(400).json({ message: "No file or profile data provided" });
         }
       }
 
+      // Update user profile
       const updatedUser = await User.findByIdAndUpdate(
         userId,
         { profile: profileDetails },
         { new: true }
       );
+
       if (!updatedUser) {
         return res.status(404).json({ message: "User not found" });
       }
+
       res.json({
         message: "Profile updated successfully",
         profile: updatedUser.profile,
@@ -335,7 +394,7 @@ app.put(
 );
 
 // Create Job Endpoint
-app.post("/api/jobs", checkRole(["admin", "super admin"]), async (req, res) => {
+app.post("/api/jobs", async (req, res) => {
   const {
     created_by,
     title,
@@ -435,8 +494,7 @@ app.get("/api/jobs/:id", async (req, res) => {
 // Update job
 app.put(
   "/api/jobs/:id",
-  auth,
-  checkRole(["admin", "super admin"]),
+
   async (req, res) => {
     try {
       const updatedJob = await Job.findByIdAndUpdate(req.params.id, req.body, {
@@ -456,8 +514,7 @@ app.put(
 // Delete job
 app.delete(
   "/api/jobs/:id",
-  auth,
-  checkRole(["admin", "super admin"]),
+
   async (req, res) => {
     try {
       const deletedJob = await Job.findByIdAndDelete(req.params.id);
@@ -501,8 +558,7 @@ app.get("/api/category/:id", async (req, res) => {
 // Create Category Endpoint
 app.post(
   "/api/categories",
-  auth,
-  checkRole(["admin", "super admin"]),
+
   async (req, res) => {
     try {
       const { category_name } = req.body;
@@ -527,8 +583,7 @@ app.post(
 // Edit Category Endpoint
 app.put(
   "/api/categories/:id",
-  auth,
-  checkRole(["admin", "super admin"]),
+
   async (req, res) => {
     try {
       const { id } = req.params;
@@ -558,8 +613,7 @@ app.put(
 // Delete Category Endpoint
 app.delete(
   "/api/categories/:id",
-  auth,
-  checkRole(["admin", "super admin"]),
+
   async (req, res) => {
     try {
       const { id } = req.params;
@@ -577,8 +631,7 @@ app.delete(
 );
 
 // File upload route
-app.post(
-  "/api/applications",
+app.post("/api/applications",
   auth, // Authentication middleware
   upload.single("cv"), // Use this for single file uploads
   [
@@ -684,7 +737,7 @@ app.get("/api/applications", async (req, res) => {
 });
 
 // Get application by ID
-app.get("/api/applications", auth, async (req, res) => {
+app.get("/api/applications", async (req, res) => {
   try {
     console.log("User Info:", req.user); // Verify user details
 
@@ -705,10 +758,8 @@ app.get("/api/applications", auth, async (req, res) => {
   }
 });
 // Update application status
-app.put(
-  "/api/applications/:id/status",
-  auth,
-  checkRole(["admin", "super admin"]),
+app.put("/api/applications/:id/status",
+
   async (req, res) => {
     const { status } = req.body;
     const validStatuses = ["applied", "interview", "hired", "rejected"];
@@ -739,10 +790,8 @@ app.put(
 );
 
 // Delete application
-app.delete(
-  "/api/applications/:id",
-  auth,
-  checkRole(["admin", "super admin"]),
+app.delete("/api/applications/:id",
+
   async (req, res) => {
     try {
       const application = await Application.findByIdAndDelete(req.params.id);
@@ -753,54 +802,6 @@ app.delete(
     } catch (error) {
       console.error("Error deleting application:", error);
       res.status(500).json({ message: "Server error" });
-    }
-  }
-);
-
-// Fetch user profile by user ID
-app.get("/profile", async (req, res) => {
-  try {
-    const user = await User.findById(req.user.id); // Assuming req.user contains user info
-    if (!user) return res.status(404).json({ error: "User not found" });
-    res.json({ profile: user.profile });
-  } catch (err) {
-    res.status(500).json({ error: "Failed to fetch profile." });
-  }
-});
-
-// Update profile with profile picture and resume
-app.post(
-  "/profile",
-  upload.fields([{ name: "profilePicture" }, { name: "resume" }]),
-  async (req, res) => {
-    try {
-      const { bio, address } = req.body;
-
-      const profilePicture = req.files.profilePicture
-        ? req.files.profilePicture[0].path
-        : "";
-      const resume = req.files.resume ? req.files.resume[0].path : "";
-
-      const updatedProfile = {
-        bio,
-        address,
-        profilePicture,
-        resume,
-      };
-
-      const user = await User.findByIdAndUpdate(
-        req.user.id,
-        { profile: updatedProfile },
-        { new: true }
-      );
-      if (!user) return res.status(404).json({ error: "User not found" });
-
-      res.json({
-        message: "Profile updated successfully!",
-        profile: user.profile,
-      });
-    } catch (err) {
-      res.status(500).json({ error: "Profile update failed." });
     }
   }
 );

@@ -2,7 +2,7 @@ const jwt = require("jsonwebtoken");
 
 const auth = (req, res, next) => {
     // Extract token from cookies
-    const token = req.cookies.token; // Assuming your cookie name is 'token'
+    const token = req.cookies.token;
 
     if (!token) {
         return res.status(401).json({ message: "No token, authorization denied" });
@@ -17,13 +17,14 @@ const auth = (req, res, next) => {
     }
 };
 
-// Middleware to check role
-const checkRole = (roles) => (req, res, next) => {
-    const userRole = req.user.role;
-    if (!roles.includes(userRole)) {
-        return res.status(403).json({ message: "Forbidden: You do not have access to this resource." });
-    }
-    next();
-};
+// // Middleware to check role
+// const checkRole = (roles) => (req, res, next) => {
+//     console.log("User role:", req.user.role);
+//     const userRole = req.user.role;
+//     if (!roles.includes(userRole)) {
+//         return res.status(403).json({ message: "Forbidden: You do not have access to this resource." });
+//     }
+//     next();
+// };
 
-module.exports = { auth, checkRole };
+module.exports = { auth };

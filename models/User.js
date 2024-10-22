@@ -6,6 +6,13 @@ const userSchema = new mongoose.Schema(
     email: { type: String, required: true, unique: true },
     password: { type: String, required: true },
     profile: {
+      first_name: { type: String, default: "" },
+      last_name: { type: String, default: "" },
+      phone: { type: Number, default: "" },
+      work_experience: [],
+      education: [],
+      certifications: [],
+      hobbies: [],
       bio: { type: String, default: "" },
       address: { type: String, default: "" },
       profilePicture: { type: String }, // Store path to profile picture
